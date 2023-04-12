@@ -20,9 +20,9 @@ def calc_pad_sizes(stride, kernel_size, height, width):
     bot_pad += stride
     return left_pad, right_pad, top_pad, bot_pad
 
-class GroupActionUntiedLearn(nn.Module):
+class LearnGroupAction(nn.Module):
     def __init__(self, params, device):
-        super(GroupActionUntiedLearn, self).__init__()
+        super(LearnGroupAction, self).__init__()
 
         self.group_size = params.group_size
         self.num_groups = params.num_groups
