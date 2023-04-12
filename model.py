@@ -28,7 +28,6 @@ class LearnGroupAction(nn.Module):
         self.num_groups = params.num_groups
         self.kernel_size = params.kernel_size
         self.stride = params.stride
-        self.ga = params.ga
 
         self.num_layers = params.num_layers
         self.step = params.step
@@ -47,14 +46,22 @@ class LearnGroupAction(nn.Module):
         self.device = device
 
         B = []
+        A = []
         for layer in range(self.num_layers):
             B_i = torch.randn(
-                (self.group_size, params.n_channels, params.kernel_size, params.kernel_size),
+                (self.num_groups, params.n_channels, params.kernel_size, params.kernel_size),
                 device=self.device
             )
             B_i = F.normalize(B_i, p="fro", dim=(-1, -2))
             B.append(nn.Parameter(B_i))
+
+            A_i = torch.randn(
+                (self.num_groups, params.n_channels, params.kernel_size * params.kernel_size, params.kernel_size * params.kernel_size)
+            )
+            A_i = F.normalize(A_i, p="fro", dim=(-1, -2))
+            A.append(nn.Parameter(A_i))
         self.B = nn.ParameterList(B)
+        self.A = nn.ParameterList(A)
 
         self.bn = nn.ModuleList([nn.BatchNorm2d(self.group_size * self.num_groups) for idx in range(self.num_layers - 1)])
 
@@ -63,25 +70,13 @@ class LearnGroupAction(nn.Module):
             lambda_.append(nn.Parameter(torch.ones(1, self.num_groups * self.group_size, 1, 1, device=self.device)))
         self.lambda_ = nn.ParameterList(lambda_)
 
-    def activation_save(self, u):
-        return F.relu(u - self.lambda_ * self.step)
-
-        os = u.shape
-        u = u.view(os[0], self.num_groups, self.group_size, os[2], os[3])
-        u = F.relu(1 - self.lambda_ * self.step / u.norm(dim=2, keepdim=True)) * F.relu(u)
-        return u.view(os)
-
     def activation(self, u, k):
         return F.relu(u - self.lambda_[k] * self.step)
-
-        os = u.shape
-        u = u.view(os[0], self.num_groups, self.group_size, os[2], os[3])
-        u = F.relu(1 - self.lambda_[k] / u.norm(dim=2, keepdim=True)) * F.relu(u)
-        return u.view(os)
 
     def normalize(self):
         for idx in range(self.num_layers):
             self.B[idx].data = F.normalize(self.B[idx].data, p="fro", dim=(-1, -2))
+            self.A[idx].data = F.normalize(self.A[idx].data, p="fro", dim=(-1, -2))
 
     def forward(self, y):
         batch_size, device = y.shape[0], y.device
@@ -90,10 +85,14 @@ class LearnGroupAction(nn.Module):
         u_old = torch.zeros(batch_size, self.group_size * self.num_groups, self.h_out, self.w_out, device=self.device)
         u_tmp = torch.zeros(batch_size, self.group_size * self.num_groups, self.h_out, self.w_out, device=self.device)
         t_old = torch.tensor(1.0, device=device)
+
         for k in range(self.num_layers):
             gen_b = self.B[k]
-            for idx in range(1, self.num_groups):
-                gen_b = torch.cat((gen_b, tf.rotate(self.B[k], self.ga * idx)), dim=0)
+            res = self.B[k]
+            for idx in range(1, self.group_size):
+                shp = self.B[k].shape
+                res = self.A[k] @ res.view(shp[0], shp[1], -1, 1)
+                gen_b = torch.cat((gen_b, res.view(shp)), dim=0)
             Bu = F.conv_transpose2d(u_tmp, gen_b, stride=self.stride, padding=self.pad, output_padding=self.output_pad)
             res = y - Bu
             u_new = self.activation(u_tmp + self.step * F.conv2d(res, gen_b, stride=self.stride, padding=self.pad), k)

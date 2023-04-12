@@ -18,7 +18,7 @@ import torchvision
 import torchvision.datasets as ds
 import torchvision.transforms.functional as tf
 
-from model import GroupActionUntiedLearn
+from model import *
 
 def log_gradients_in_model(model, logger, step):
     for tag, value in model.named_parameters():
@@ -65,7 +65,7 @@ def report_statistics(start, idx, total_len, val=0.0):
 
 class Names():
         def __init__(self, params):
-            name = str(params.model) + "_groups=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_stride=" + str(params.stride) + "_layers=" + str(params.num_layers) + "_step=" + str(params.step) + "_lam=" + str(params.lambda_) + "_lamloss=" + str(params.lam_loss) + "_lr=" + str(params.lr)
+            name = str(params.model) + "_groups=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_stride=" + str(params.stride) + "_layers=" + str(params.num_layers) + "_step=" + str(params.step) + "_lam=" + str(params.lmbd) + "_lamloss=" + str(params.lam_loss) + "_lr=" + str(params.lr)
 
             date = datetime.now().strftime("%Y_%m_%d_T%H%M%S")
             model = name + "_" + date
@@ -97,35 +97,36 @@ def gen_loaders(params, workers):
         else:
             X_tr, Y_tr, X_te, Y_te = load_cifar()
     else:
-        raise Exception("Dataset not implemeneted")        
+        raise Exception("Dataset not implemeneted")
     train_dl = make_loader(TensorDataset(X_tr, Y_tr), batch_size=params.batch_size, num_workers=workers)
     test_dl = make_loader(TensorDataset(X_te, Y_te), batch_size=params.batch_size, num_workers=workers)
     return train_dl, test_dl
 
 def gen_model(params, device, init_B=None):
     # for now, just hack it out
-    return GroupActionUntiedLearn(params, device).to(device)
+    return LearnGroupAction(params, device).to(device)
 
-def standardize(X):
+def standardize(X, mean=None, std=None):
     "Expects data in NxCxWxH."
-    means = X.mean(axis=(0,2,3))
-    std = X.std(axis=(0,2,3))
+    if mean is None:
+        mean = X.mean(axis=(0,2,3))
+        std = X.std(axis=(0,2,3))
 
-    X = torchvision.transforms.Normalize(means, std)(X)
-    return X
+    X = torchvision.transforms.Normalize(mean, std)(X)
+    return X, mean, std
 
-def whiten(X, eps=1e-8):
+def whiten(X, zca=None, mean=None, eps=1e-8):
     "Expects data in NxCxWxH."
     os = X.shape
-
-
     X = X.reshape(os[0], -1)
-    cov = np.cov(X, rowvar=False)
-    U, S, V = np.linalg.svd(cov)
 
-    zca = np.dot(U, np.dot(np.diag(1.0 / np.sqrt(S + eps)), U.T))
-    X = torch.Tensor(np.dot(X, zca).reshape(os))
-    return X
+    if zca is None:
+        mean = X.mean(dim=0)
+        cov = np.cov(X, rowvar=False)
+        U, S, V = np.linalg.svd(cov)
+        zca = np.dot(U, np.dot(np.diag(1.0 / np.sqrt(S + eps)), U.T))
+    X = torch.Tensor(np.dot(X - mean, zca.T).reshape(os))
+    return X, zca, mean
 
 def load_mnist(params, datadir="~/data", five_digits=False):
     train_ds = ds.MNIST(root=datadir, train=True, download=True, transform=torchvision.transforms.Compose([
@@ -152,11 +153,11 @@ def load_mnist(params, datadir="~/data", five_digits=False):
     X_tr, Y_tr = to_xy(train_ds)
     X_te, Y_te = to_xy(test_ds)
 
-    X_tr = standardize(X_tr)
-    X_te = standardize(X_te)
+    X_tr, mean, std = standardize(X_tr)
+    X_te, _, _ = standardize(X_te, mean, std)
 
-    X_tr = whiten(X_tr)
-    X_te = whiten(X_te)
+    X_tr, zca, mean = whiten(X_tr)
+    X_te, _, _ = whiten(X_te, zca, mean)
 
     return X_tr, Y_tr, X_te, Y_te
 
@@ -200,11 +201,11 @@ def load_cifar(datadir='~/data', three_class=False, color=False):
     X_tr, Y_tr = to_xy(train_ds)
     X_te, Y_te = to_xy(test_ds)
 
-    X_tr = standardize(X_tr)
-    X_te = standardize(X_te)
+    X_tr, mean, std = standardize(X_tr)
+    X_te, _, _ = standardize(X_te, mean, std)
 
-    X_tr = whiten(X_tr)
-    X_te = whiten(X_te)
+    # X_tr, zca, mean = whiten(X_tr)
+    # X_te, _, _ = whiten(X_te, zca, mean)
     return X_tr, Y_tr, X_te, Y_te
 
 def make_loader(dataset, shuffle=True, batch_size=128, num_workers=4):

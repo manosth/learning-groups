@@ -5,7 +5,6 @@ import time
 
 # pythom imports
 import numpy as np
-from tqdm import tqdm
 
 # torch imports
 import torch
@@ -58,13 +57,18 @@ if __name__ == '__main__':
 
     # training params
     opt = optim.Adam(model.parameters(), lr=params.lr, eps=params.eps)
-    schd = optim.lr_scheduler.MultiStepLR(opt, [int(1/3 * params.epochs), int(2/3 * params.epochs)], gamma=1/3)
+    schd = optim.lr_scheduler.MultiStepLR(opt, [int(1/2 * params.epochs), int(3/4 * params.epochs), int(7/8 * params.epochs)], gamma=1/2)
     loss_func = torch.nn.CrossEntropyLoss()
 
     for k in range(params.num_layers):
         gen_b = model.B[k].clone().detach()
-        for idx in range(1, params.num_groups):
-            gen_b = torch.cat((gen_b, tf.rotate(model.B[k].clone().detach(), params.ga * idx)), dim=0)
+        res = model.B[k].clone().detach()
+        A = model.A[k].clone().detach()
+        for idx in range(1, params.group_size):
+            shp = model.B[k].shape
+            res = A @ res.view(shp[0], shp[1], -1, 1)
+            # res = (A @ res.view(shp[0], shp[1], -1)).view(shp)
+            gen_b = torch.cat((gen_b, res.view(shp)), dim=0)
         gen_b = gen_b.data.cpu().numpy()
         save_conv_dictionary(gen_b, params, 0, k, filters_path, names)
 
@@ -109,10 +113,21 @@ if __name__ == '__main__':
 
         # save dicts
         if (epoch % plot_period) == 0:
+            # for k in range(params.num_layers):
+            #     gen_b = model.B[k].clone().detach()
+            #     for jdx in range(1, params.num_groups):
+            #         gen_b = torch.cat((gen_b, tf.rotate(model.B[k].clone().detach(), params.ga * jdx)), dim=0)
+            #     gen_b = gen_b.data.cpu().numpy()
+            #     save_conv_dictionary(gen_b, params, epoch, k, filters_path, names)
             for k in range(params.num_layers):
                 gen_b = model.B[k].clone().detach()
-                for jdx in range(1, params.num_groups):
-                    gen_b = torch.cat((gen_b, tf.rotate(model.B[k].clone().detach(), params.ga * jdx)), dim=0)
+                res = model.B[k].clone().detach()
+                A = model.A[k].clone().detach()
+                for idx in range(1, params.group_size):
+                    shp = model.B[k].shape
+                    res = A @ res.view(shp[0], shp[1], -1, 1)
+                    # res = (A @ res.view(shp[0], shp[1], -1)).view(shp)
+                    gen_b = torch.cat((gen_b, res.view(shp)), dim=0)
                 gen_b = gen_b.data.cpu().numpy()
                 save_conv_dictionary(gen_b, params, epoch, k, filters_path, names)
 

@@ -15,12 +15,12 @@ from torchvision.utils import make_grid, save_image
 def save_conv_dictionary(W, params, epoch, k, save_path, names, cmap="gray"):
     # create a reasonable size for the image
     p = params.group_size * params.num_groups
-    a = np.int(np.ceil(np.sqrt(p)))
+    a = int(np.ceil(np.sqrt(p)))
     # note: matplotlib and gridspec have opposite notations for sizes
-    # fig = plt.figure(figsize=(params.group_size, params.num_groups))
-    # gs1 = gridspec.GridSpec(params.num_groups, params.group_size)
-    fig = plt.figure(figsize=(a, a))
-    gs1 = gridspec.GridSpec(a, a)
+    fig = plt.figure(figsize=(params.group_size, params.num_groups))
+    gs1 = gridspec.GridSpec(params.num_groups, params.group_size)
+    # fig = plt.figure(figsize=(a, a))
+    # gs1 = gridspec.GridSpec(a, a)
     gs1.update(wspace=0.0025, hspace=0.05)
     W -= np.min(W)
     W /= np.max(W)
