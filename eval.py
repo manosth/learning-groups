@@ -43,11 +43,12 @@ if __name__ == '__main__':
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     workers = max(4 * torch.cuda.device_count(), 4)
 
-    name = "suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_12_T114529"
+    name = "sul_groups=4_kernel=4_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_12_T124736"
     folder_path = "results/cifarcolor_conv_" + name
     model_path = folder_path + "/" + name + ".pth"
-    figs_path = folder_path + "/figs/groups/"
+    figs_path = folder_path + "/figs/"
     os.makedirs(figs_path, exist_ok=True)
+    os.makedirs(figs_path + "groups/", exist_ok=True)
 
     model = LearnGroupAction(params, device)
     model.load_state_dict(torch.load(model_path))
@@ -68,5 +69,5 @@ if __name__ == '__main__':
                     ax.set_xticklabels([])
                     ax.set_yticklabels([])
                     ax.set_aspect("equal")
-                    plt.savefig(figs_path + "GA_channel=" + str(channel) + "_group=" + str(idx) + "_k=" + str(k) + ".pdf", bbox_inches="tight")
+                    plt.savefig(figs_path + "groups/GA_k=" + str(k) + "_group=" + str(idx) + "_channel=" + str(channel) + ".pdf", bbox_inches="tight")
                     plt.close()

@@ -15,7 +15,7 @@ class Params():
             self.model = "sul" # sparse, untied, whitened, learned bias
             self.group_size = 4
             self.num_groups = 5
-            self.kernel_size = 4
+            self.kernel_size = 6
             self.stride = 1
 
             self.num_layers = 4
