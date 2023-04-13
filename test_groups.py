@@ -45,7 +45,7 @@ if __name__ == '__main__':
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     workers = max(4 * torch.cuda.device_count(), 4)
 
-    name = "suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_12_T114529"
+    name = "suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T101656"
     folder_path = "results/cifarcolor_conv_" + name
     model_path = folder_path + "/" + name + ".pth"
     figs_path = folder_path + "/figs/"

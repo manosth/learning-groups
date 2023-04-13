@@ -204,8 +204,8 @@ def load_cifar(datadir='~/data', three_class=False, color=False):
     X_tr, mean, std = standardize(X_tr)
     X_te, _, _ = standardize(X_te, mean, std)
 
-    # X_tr, zca, mean = whiten(X_tr)
-    # X_te, _, _ = whiten(X_te, zca, mean)
+    X_tr, zca, mean = whiten(X_tr)
+    X_te, _, _ = whiten(X_te, zca, mean)
     return X_tr, Y_tr, X_te, Y_te
 
 def make_loader(dataset, shuffle=True, batch_size=128, num_workers=4):

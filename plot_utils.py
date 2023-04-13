@@ -22,11 +22,13 @@ def save_conv_dictionary(W, params, epoch, k, save_path, names, cmap="gray"):
     # fig = plt.figure(figsize=(a, a))
     # gs1 = gridspec.GridSpec(a, a)
     gs1.update(wspace=0.0025, hspace=0.05)
-    W -= np.min(W)
-    W /= np.max(W)
+    # W -= np.min(W)
+    # W /= np.max(W)
     for col in range(p):
         ax1 = plt.subplot(gs1[col])
         wi = W[col]
+        wi -= np.min(wi, axis=(1,2), keepdims=True) # per channel min
+        wi /= np.max(wi, axis=(1,2), keepdims=True)
         wi = np.transpose(wi, (1,2,0)).squeeze()
         plt.imshow(wi, cmap=cmap)
         plt.axis("off")
@@ -48,8 +50,8 @@ def save_whole_net(W, params, epoch, save_path, names, cmap="gray"):
     gs1.update(wspace=0.0025, hspace=0.05)
     for layer in range(params.num_layers):
         wi = W[layer].clone().detach().cpu().numpy()
-        wi -= np.min(wi)
-        wi /= np.max(wi)
+        wi -= np.min(wi, axis=(1,2), keepdims=True)
+        wi /= np.max(wi, axis=(1,2), keepdims=True)
         for col in range(params.group_size):
             ax1 = plt.subplot(gs1[col + layer * params.group_size])
             wi_p = wi[col]
@@ -66,17 +68,19 @@ def save_whole_net(W, params, epoch, save_path, names, cmap="gray"):
 
 def save_conv_encoding(encoding, params, path, to_save, cmap=None):
     p = params.group_size * params.num_groups
-    a = np.int(np.ceil(np.sqrt(p)))
+    a = int(np.ceil(np.sqrt(p)))
     # note: matplotlib and gridspec have opposite notations for sizes
     fig = plt.figure(figsize=(params.group_size, params.num_groups))
     gs1 = gridspec.GridSpec(params.num_groups, params.group_size)
     gs1.update(wspace=0.025, hspace=0.05)
     E = encoding.clone().detach().cpu().numpy()
-    E -= np.min(E)
-    E /= np.max(E)
+    # E -= np.min(E)
+    # E /= np.max(E)
     for col in range(p):
         ax1 = plt.subplot(gs1[col])
         wi = E[col, :, :]
+        wi -= np.min(wi)
+        wi /= np.max(wi)
         #wi = np.transpose(wi, (1,2,0)).squeeze()
         if cmap is not None:
             plt.imshow(wi, vmin=0, vmax=1, cmap=cmap)
@@ -88,5 +92,23 @@ def save_conv_encoding(encoding, params, path, to_save, cmap=None):
         ax1.set_aspect("equal")
         plt.subplots_adjust(wspace=None, hspace=None)
     # plt.tight_layout(pad=0.0, w_pad=0.0, h_pad=0)
-    plt.savefig(path + "encoder_size=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_stride=" + str(params.stride) + "_lam=" + str(params.lambda_) + "_init=" + str(params.init_mode) + "_batch=" + str(params.batch_size) + "_img=" + str(to_save) + ".pdf", bbox_inches="tight", pad_inches=0.02)
+    plt.savefig(path + "encoder_size=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_stride=" + str(params.stride) + "_lam=" + str(params.lmbd) + "_batch=" + str(params.batch_size) + "_img=" + str(to_save) + ".pdf", bbox_inches="tight", pad_inches=0.02)
+    plt.close()
+
+def save_img(img, params, path, to_save, recon=False):
+    img = img.detach().cpu().numpy()
+    img -= np.min(img, axis=(1,2), keepdims=True)
+    img /= np.max(img, axis=(1,2), keepdims=True)
+    plt.figure(figsize=(params.input_width, params.input_height))
+    plt.imshow(np.transpose(img, (1,2,0)).squeeze())#, cmap="gray")
+    plt.axis("off")
+    # ax1.set_xticklabels([])
+    # ax1.set_yticklabels([])
+    plt.gca().set_aspect("equal")
+    # plt.subplots_adjust(wspace=None, hspace=None)
+    plt.tight_layout(pad=0.0, w_pad=0.0, h_pad=0)
+    if recon:
+        plt.savefig(path + "class_img=" + str(to_save) + "_recon.pdf")
+    else:
+        plt.savefig(path + "class_img=" + str(to_save) + ".pdf")
     plt.close()
