@@ -45,22 +45,33 @@ if __name__ == '__main__':
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     workers = max(4 * torch.cuda.device_count(), 4)
 
-    name = "suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T101656"
+    name = "final_suul_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T222729"
     folder_path = "results/cifarcolor_conv_" + name
     model_path = folder_path + "/" + name + ".pth"
     figs_path = folder_path + "/figs/"
     os.makedirs(figs_path, exist_ok=True)
-    os.makedirs(figs_path + "groups/", exist_ok=True)
     os.makedirs(figs_path + "actions/", exist_ok=True)
 
     model = LearnGroupAction(params, device)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
+    names = gen_names(params)
+
     layer = 3
     group = 3
     model.eval()
     with torch.no_grad():
+        for k in range(params.num_layers):
+            gen_b = model.B[k].clone().detach()
+            res = model.B[k].clone().detach()
+            A = model.A[k].clone().detach()
+            for idx in range(1, params.group_size):
+                shp = model.B[k].shape
+                res = A @ res.view(shp[0], shp[1], -1, 1)
+                gen_b = torch.cat((gen_b, res.view(shp)), dim=0)
+            gen_b = gen_b.data.cpu().numpy()
+            save_conv_dictionary(gen_b, params, 0, k, figs_path + "actions/", names)
         A = model.A[layer].clone().detach()
         B = model.B[layer].clone().detach()
 

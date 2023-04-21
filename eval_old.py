@@ -4,7 +4,6 @@ from datetime import datetime
 
 # pythom imports
 import numpy as np
-import pickle
 
 # torch imports
 import torch
@@ -19,8 +18,9 @@ import torchvision.datasets as ds
 import torchvision.transforms.functional as tf
 
 # file imports
-from utils_new import *
+from utils import *
 from plot_utils import *
+from config_plot import Params
 
 import matplotlib.pyplot as plt
 from matplotlib import rc, cm
@@ -35,30 +35,30 @@ cmap = sns.color_palette("coolwarm", as_cmap=True)
 color_plot = sns.cubehelix_palette(4, reverse=True, rot=-.2)
 
 if __name__ == '__main__':
+    params = Params()
+
     seed = 40
     # torch.manual_seed(seed)
     np.random.seed(seed)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     workers = max(4 * torch.cuda.device_count(), 4)
 
-    name = "results/cifar10/glee_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_04_20_T113617"
-    names = gen_names(None, name)
-
-    with open(names.folder_path + "params.pckl", "rb") as file:
-        params = pickle.load(file)
-
-    os.makedirs(names.figs_path, exist_ok=True)
-    os.makedirs(names.figs_path + "groups/", exist_ok=True)
+    name = "final_suul_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T222729"
+    folder_path = "results/cifarcolor_conv_" + name
+    model_path = folder_path + "/" + name + ".pth"
+    figs_path = folder_path + "/figs/"
+    os.makedirs(figs_path, exist_ok=True)
+    os.makedirs(figs_path + "groups/", exist_ok=True)
 
     model = LearnGroupAction(params, device)
-    model.load_state_dict(torch.load(names.model_path))
+    model.load_state_dict(torch.load(model_path))
     model = model.to(device)
 
     model.eval()
     with torch.no_grad():
-        for k in range(params.n_layers):
+        for k in range(params.num_layers):
             A = model.A[k].clone().detach()
-            for idx in range(params.n_groups):
+            for idx in range(params.num_groups):
                 for channel in range(params.n_channels):
                     plt.figure()
                     sns.heatmap(A[idx, channel, :, :].cpu().numpy(), cmap=cmap)#, vmin=-0.2, vmax=0.2)
@@ -69,5 +69,5 @@ if __name__ == '__main__':
                     ax.set_xticklabels([])
                     ax.set_yticklabels([])
                     ax.set_aspect("equal")
-                    plt.savefig(names.figs_path + "groups/GA_k=" + str(k) + "_group=" + str(idx) + "_channel=" + str(channel) + ".pdf", bbox_inches="tight")
+                    plt.savefig(figs_path + "groups/GA_k=" + str(k) + "_group=" + str(idx) + "_channel=" + str(channel) + ".pdf", bbox_inches="tight")
                     plt.close()

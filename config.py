@@ -12,7 +12,7 @@ class Params():
             self.dataset = "cifar"
 
             # model params
-            self.model = "final_suwl" # sparse, untied, whitened/unormalized, learned bias
+            self.model = "final_suul" # sparse, untied, whitened/unormalized, learned bias
             self.group_size = 4
             self.num_groups = 5
             self.kernel_size = 6
