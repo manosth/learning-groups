@@ -7,6 +7,7 @@ from skimage import io
 # pythom imports
 import numpy as np
 import scipy.io as sio
+import argparse
 
 # torch imports
 import torch
@@ -63,27 +64,109 @@ def report_statistics(start, idx, total_len, val=0.0):
         hours_r = int((remain // 60) // 60)
         print(f"progress: {(idx + 1) / total_len * 100:5.2f}%\telapsed: {hours:02d}:{minutes:02d}:{seconds:02d}\tremaining: {hours_r:02d}:{minutes_r:02d}:{seconds_r:02d}\tval: {val}", end="\r")
 
-class Names():
+class Params():
         def __init__(self, params):
-            name = str(params.model) + "_groups=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_stride=" + str(params.stride) + "_layers=" + str(params.num_layers) + "_step=" + str(params.step) + "_lam=" + str(params.lmbd) + "_lamloss=" + str(params.lam_loss) + "_lr=" + str(params.lr)
+            # optimizer and training params
+            self.lr = 1e-2
+            self.eps = 1e-8
 
-            date = datetime.now().strftime("%Y_%m_%d_T%H%M%S")
-            model = name + "_" + date
+            self.batch_size = 128
+            self.epochs = 300
 
-            path = "results/" + params.dataset
-            if params.n_channels > 1:
-                path += "color_"
+            self.tensorboard = True
+            self.dataset = "cifar"
+
+            # model params
+            self.model = "final_suul" # sparse, untied, whitened/unormalized, learned bias
+            self.group_size = 4
+            self.num_groups = 5
+            self.kernel_size = 6
+            self.stride = 1
+
+            self.num_layers = 4
+
+            self.step = 0.01
+            self.lmbd = 0
+
+            self.lam_loss = 0
+
+            # data params
+            self.n_classes = 10
+            self.classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+
+            self.n_channels = 3
+            self.input_size = 1024
+            self.input_width = 32
+            self.input_height = 32
+
+            # classification params
+            self.pool_size = 4
+
+# self.classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+# self.classes = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+def parse_args():
+    parser = argparse.ArgumentParser()
+    # training params
+    parser.add_argument('--lr', type=float, default=1e-2, help='optimizer learning rate')
+    parser.add_argument('--eps', type=float, default=1e-8, help='optimizer epsilon')
+    parser.add_argument('--batch_size', type=int, default=128, help='batch size')
+    parser.add_argument('--epochs', type=int, default=100, help='training epochs')
+    parser.add_argument('--tensorboard', type=bool, default=True, help='use tensorboard')
+    parser.add_argument('--comments', type=str, default=None, help='comments to prepend to the folder')
+
+    # data params
+    parser.add_argument('--dataset', type=str, default='cifar10', choices=['cifar10', 'cifar10c', 'cifar10g', 'mnist', 'rmnist', 'fmnist'], help='testing dataset')
+    parser.add_argument('--n_classes', type=int, default=10, help='number of classes')
+    parser.add_argument('--n_channels', type=int, default=3, help='number of channels')
+    parser.add_argument('--input_size', type=int, default=1024, help='size of the input images')
+    parser.add_argument('--input_width', type=int, default=32, help='width of the input images')
+    parser.add_argument('--input_height', type=int, default=32, help='height of the input images')
+
+    # architecture params
+    parser.add_argument('--model', type=str, default="glee", help='model name')
+    parser.add_argument('--n_groups', type=int, default=5, help='number of groups')
+    parser.add_argument('--group_size', type=int, default=4, help='group size')
+    parser.add_argument('--kernel_size', type=int, default=6, help='kernel size')
+    parser.add_argument('--stride', type=int, default=1, help='convolution stride')
+    parser.add_argument('--n_layers', type=int, default=4, help='number of layers')
+    parser.add_argument('--eta', type=float, default=0.01, help='unfolding step size')
+    parser.add_argument('--lmbd', type=float, default=0, help='lambda for soft thresholding')
+    parser.add_argument('--pool_size', type=int, default=4, help='pooling size for classification')
+
+    args = parser.parse_args()
+
+    return args
+
+class Names():
+        def __init__(self, params, folder=None):
+            if folder is None:
+                if params.comments is None:
+                    name = str(params.model) + "_groups=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_layers=" + str(params.n_layers) + "_lam=" + str(params.lmbd) + "_lr=" + str(params.lr)
+                else:
+                    name = params.comments + "_" + str(params.model) + "_groups=" + str(params.group_size) + "_kernel=" + str(params.kernel_size) + "_layers=" + str(params.n_layers) + "_lam=" + str(params.lmbd) + "_lr=" + str(params.lr)
+
+                date = datetime.now().strftime("%Y_%m_%d_T%H%M%S")
+                model = name + "_" + date
+                path = "results/" + params.dataset + "/"
             else:
-                path += "_"
+                model = folder.split("/")[2]
+                path = "results/" + folder.split("/")[1] + "/"
 
-            if params.kernel_size < params.input_width:
-                path += "conv_"
+            # if params.n_channels > 1:
+            #     path += "color_"
+            # else:
+            #     path += "_"
+
+            # if params.kernel_size < params.input_width:
+            #     path += "conv_"
 
             self.model = model
-            self.path = path + model + "/"
+            self.folder_path = path + model + "/"
+            self.model_path = path + model + "/" + model + ".pth"
+            self.figs_path = path + model + "/figs/"
 
-def gen_names(params):
-    names = Names(params)
+def gen_names(params, folder=None):
+    names = Names(params, folder=folder)
     return names
 
 def gen_loaders(params, workers):
@@ -91,7 +174,7 @@ def gen_loaders(params, workers):
         X_tr, Y_tr, X_te, Y_te = load_mnist(params)
     elif params.dataset == "rmnist":
         X_tr, Y_tr, X_te, Y_te = load_rmnist(params)
-    elif params.dataset == "cifar":
+    elif params.dataset == "cifar10":
         if params.n_channels > 1:
             X_tr, Y_tr, X_te, Y_te = load_cifar(color=True)
         else:

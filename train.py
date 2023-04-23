@@ -20,8 +20,8 @@ import torchvision.datasets as ds
 import torchvision.transforms.functional as tf
 
 # file imports
-from utils_new import *
-from plot_utils_new import *
+from utils import *
+from plot_utils import *
 
 if __name__ == '__main__':
     params = parse_args()
