@@ -106,3 +106,27 @@ class LearnGroupAction(nn.Module):
         y_hat = self.pooler(u_hat)
         y_hat = self.fc(y_hat.view(batch_size, -1))
         return y_hat, u_hat
+
+class LearnGroupAction_patch(nn.Module):
+    def __init__(self, params, device):
+        super(LearnGroupAction_patch, self).__init__()
+
+        self.kernel_size = params.kernel_size
+        self.device = device
+
+        A = torch.randn(
+            (1, params.n_channels, params.kernel_size * params.kernel_size, params.kernel_size * params.kernel_size),
+            device=self.device
+        )
+        A = F.normalize(A, p="fro", dim=(-1, -2))
+        self.A = nn.Parameter(A)
+
+    def normalize(self):
+        self.A.data = F.normalize(self.A.data, p="fro", dim=(-1, -2))
+
+    def forward(self, y):
+        batch_size, device = y.shape[0], y.device
+
+        shp = y.shape
+        out = self.A @ y.view(shp[0], shp[1], -1, 1)
+        return out.view(shp)

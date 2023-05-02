@@ -3,6 +3,7 @@ import os
 import time
 from datetime import datetime
 from skimage import io
+import math
 
 # pythom imports
 import numpy as np
@@ -14,6 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, TensorDataset, Subset, random_split
+from torch.nn.modules.utils import _pair, _quadruple
 
 import torchvision
 import torchvision.datasets as ds
@@ -116,11 +118,13 @@ def parse_args():
 
     # data params
     parser.add_argument('--dataset', type=str, default='cifar10', choices=['cifar10', 'cifar10c', 'cifar10g', 'mnist', 'rmnist', 'fmnist'], help='testing dataset')
+    parser.add_argument('--experiment', type=str, default='class', choices=['class', 'recon', 'rot_p'], help='experiment')
     parser.add_argument('--n_classes', type=int, default=10, help='number of classes')
     parser.add_argument('--n_channels', type=int, default=3, help='number of channels')
     parser.add_argument('--input_size', type=int, default=1024, help='size of the input images')
     parser.add_argument('--input_width', type=int, default=32, help='width of the input images')
     parser.add_argument('--input_height', type=int, default=32, help='height of the input images')
+    parser.add_argument('--norm', type=str, default="whiten", choices=['whiten', 'standard', 'none'], help='data normalization')
 
     # architecture params
     parser.add_argument('--model', type=str, default="glee", help='model name')
@@ -147,10 +151,10 @@ class Names():
 
                 date = datetime.now().strftime("%Y_%m_%d_T%H%M%S")
                 model = name + "_" + date
-                path = "results/" + params.dataset + "/"
+                path = "results/" + params.experiment + "/" + params.dataset + "/"
             else:
-                model = folder.split("/")[2]
-                path = "results/" + folder.split("/")[1] + "/"
+                model = folder.split("/")[3]
+                path = "results/" + folder.split("/")[1] + "/" + folder.split("/")[2] + "/"
 
             # if params.n_channels > 1:
             #     path += "color_"
@@ -169,16 +173,16 @@ def gen_names(params, folder=None):
     names = Names(params, folder=folder)
     return names
 
-def gen_loaders(params, workers):
+def gen_loaders(params, workers, patch=False):
     if params.dataset == "mnist":
         X_tr, Y_tr, X_te, Y_te = load_mnist(params)
     elif params.dataset == "rmnist":
         X_tr, Y_tr, X_te, Y_te = load_rmnist(params)
     elif params.dataset == "cifar10":
         if params.n_channels > 1:
-            X_tr, Y_tr, X_te, Y_te = load_cifar(color=True)
+            X_tr, Y_tr, X_te, Y_te = load_cifar(params, color=True, patch=patch)
         else:
-            X_tr, Y_tr, X_te, Y_te = load_cifar()
+            X_tr, Y_tr, X_te, Y_te = load_cifar(params, patch=patch)
     else:
         raise Exception("Dataset not implemeneted")
     train_dl = make_loader(TensorDataset(X_tr, Y_tr), batch_size=params.batch_size, num_workers=workers)
@@ -187,7 +191,8 @@ def gen_loaders(params, workers):
 
 def gen_model(params, device, init_B=None):
     # for now, just hack it out
-    return LearnGroupAction(params, device).to(device)
+    return LearnGroupAction_patch(params, device).to(device)
+    # return LearnGroupAction(params, device).to(device)
 
 def standardize(X, mean=None, std=None):
     "Expects data in NxCxWxH."
@@ -260,7 +265,7 @@ def load_rmnist(params, datadir="/home/manos/data/rmnist/data.mat"):
 
     return X_tr, Y_tr, X_te, Y_te
 
-def load_cifar(datadir='~/data', three_class=False, color=False):
+def load_cifar(params, datadir='~/data', three_class=False, color=False, patch=False):
     train_ds = ds.CIFAR10(root=datadir, train=True,
                            download=True, transform=None)
     test_ds = ds.CIFAR10(root=datadir, train=False,
@@ -284,12 +289,86 @@ def load_cifar(datadir='~/data', three_class=False, color=False):
     X_tr, Y_tr = to_xy(train_ds)
     X_te, Y_te = to_xy(test_ds)
 
-    # X_tr, mean, std = standardize(X_tr)
-    # X_te, _, _ = standardize(X_te, mean, std)
+    if params.norm == "standrad":
+        X_tr, mean, std = standardize(X_tr)
+        X_te, _, _ = standardize(X_te, mean, std)
+    elif params.norm == "whiten":
+        X_tr, mean, std = standardize(X_tr)
+        X_te, _, _ = standardize(X_te, mean, std)
 
-    # X_tr, zca, mean = whiten(X_tr)
-    # X_te, _, _ = whiten(X_te, zca, mean)
+        X_tr, zca, mean = whiten(X_tr)
+        X_te, _, _ = whiten(X_te, zca, mean)
+
+    if patch:
+        angle = 90
+        med_filt = MedianPool2d(6, same=True)
+        X_patch_tr = torch.zeros(X_tr.shape[0], X_tr.shape[1], params.kernel_size, params.kernel_size)
+        Y_patch_tr = torch.zeros(X_tr.shape[0], X_tr.shape[1], params.kernel_size, params.kernel_size)
+        for idx in range(X_tr.shape[0]):
+            rand_x = np.random.choice(X_tr.shape[2] - params.kernel_size)
+            rand_y = np.random.choice(X_tr.shape[3] - params.kernel_size)
+            X_patch_tr[idx] = X_tr[idx, :, rand_x:rand_x+params.kernel_size, rand_y:rand_y+params.kernel_size]
+            Y_patch_tr[idx] = med_filt(X_patch_tr[idx].unsqueeze(0)).squeeze()
+            Y_patch_tr[idx] = tf.rotate(Y_patch_tr[idx], angle)
+
+
+        X_patch_te = torch.zeros(X_te.shape[0], X_te.shape[1], params.kernel_size, params.kernel_size)
+        Y_patch_te = torch.zeros(X_te.shape[0], X_te.shape[1], params.kernel_size, params.kernel_size)
+        for idx in range(X_te.shape[0]):
+            rand_x = np.random.choice(X_te.shape[2] - params.kernel_size)
+            rand_y = np.random.choice(X_te.shape[3] - params.kernel_size)
+            X_patch_te[idx] = X_te[idx, :, rand_x:rand_x+params.kernel_size, rand_y:rand_y+params.kernel_size]
+            Y_patch_te[idx] = med_filt(X_patch_te[idx].unsqueeze(0)).squeeze()
+            Y_patch_te[idx] = tf.rotate(Y_patch_te[idx], angle)
+        X_tr = X_patch_tr
+        Y_tr = Y_patch_tr
+        X_te = X_patch_te
+        Y_te = Y_patch_te
     return X_tr, Y_tr, X_te, Y_te
 
 def make_loader(dataset, shuffle=True, batch_size=128, num_workers=4):
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, pin_memory=True)
+
+class MedianPool2d(nn.Module):
+    """ Median pool (usable as median filter when stride=1) module.
+
+    Args:
+         kernel_size: size of pooling kernel, int or 2-tuple
+         stride: pool stride, int or 2-tuple
+         padding: pool padding, int or 4-tuple (l, r, t, b) as in pytorch F.pad
+         same: override padding and enforce same padding, boolean
+    """
+    def __init__(self, kernel_size=3, stride=1, padding=0, same=False):
+        super(MedianPool2d, self).__init__()
+        self.k = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _quadruple(padding)  # convert to l, r, t, b
+        self.same = same
+
+    def _padding(self, x):
+        if self.same:
+            ih, iw = x.size()[2:]
+            if ih % self.stride[0] == 0:
+                ph = max(self.k[0] - self.stride[0], 0)
+            else:
+                ph = max(self.k[0] - (ih % self.stride[0]), 0)
+            if iw % self.stride[1] == 0:
+                pw = max(self.k[1] - self.stride[1], 0)
+            else:
+                pw = max(self.k[1] - (iw % self.stride[1]), 0)
+            pl = pw // 2
+            pr = pw - pl
+            pt = ph // 2
+            pb = ph - pt
+            padding = (pl, pr, pt, pb)
+        else:
+            padding = self.padding
+        return padding
+
+    def forward(self, x):
+        # using existing pytorch functions and tensor ops so that we get autograd,
+        # would likely be more efficient to implement from scratch at C/Cuda level
+        x = F.pad(x, self._padding(x), mode='reflect')
+        x = x.unfold(2, self.k[0], self.stride[0]).unfold(3, self.k[1], self.stride[1])
+        x = x.contiguous().view(x.size()[:4] + (-1,)).median(dim=-1)[0]
+        return x
