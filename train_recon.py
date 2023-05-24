@@ -25,10 +25,11 @@ from plot_utils import *
 
 if __name__ == '__main__':
     params = parse_args()
+    params.experiment = "recon"
 
     # 0.001 for inv
     # 0.01 for svd
-    mu = 0.0001
+    mu = 0.01
 
     # create model and loaders
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -65,7 +66,7 @@ if __name__ == '__main__':
     # training params
     opt = optim.Adam(model.parameters(), lr=params.lr, eps=params.eps)
     schd = optim.lr_scheduler.MultiStepLR(opt, [int(1/2 * params.epochs), int(3/4 * params.epochs), int(7/8 * params.epochs)], gamma=1/2)
-    loss_func = torch.nn.CrossEntropyLoss()
+    loss_func = torch.nn.MSELoss()
 
     for k in range(params.n_layers):
         gen_b = model.B[k].clone().detach()
@@ -86,7 +87,6 @@ if __name__ == '__main__':
     print(f"Starting iterations...\t(Start time: {local[3]:02d}:{local[4]:02d}:{local[5]:02d})")
     for epoch in range(1, params.epochs + 1):
         net_loss = 0.0
-        n_correct = 0
         n_total = 0
 
         model.train()
@@ -94,7 +94,7 @@ if __name__ == '__main__':
             x, y = x.to(device), y.to(device)
 
             out, code = model(x)
-            loss_1 = loss_func(out, y)
+            loss_1 = loss_func(out, x)
             loss_2 = 0
             # SVD try
             # for layer in range(params.n_layers):
@@ -117,17 +117,14 @@ if __name__ == '__main__':
             n_total += len(x)
             with torch.no_grad():
                 model.normalize()
-                _, preds = torch.max(out, dim=1)
-                n_correct += (preds == y).float().sum().cpu()
 
             if idx % report_period == 0:
-                train_acc = n_correct / n_total
+                train_loss = net_loss / n_total
                 curr_train = (epoch - 1) * (len(train_dl) + len(test_dl)) + idx
                 # reset the buffer
                 report_statistics(start, curr_train, total_train, val="")
-                report_statistics(start, curr_train, total_train, val=np.round(train_acc, 4))
+                report_statistics(start, curr_train, total_train, val=np.round(train_loss, 4))
         train_loss = net_loss / n_total
-        train_acc = n_correct / n_total
 
         # save dicts
         if (epoch % plot_period) == 0:
@@ -150,7 +147,6 @@ if __name__ == '__main__':
                 save_conv_dictionary(gen_b, params, epoch, k, filters_path, names)
 
         net_loss = 0.0
-        n_correct = 0
         n_total = 0
         model.eval()
         with torch.no_grad():
@@ -158,37 +154,27 @@ if __name__ == '__main__':
                 x, y = x.to(device), y.to(device)
 
                 out, code = model(x)
-                loss = loss_func(out, y)
+                loss = loss_func(out, x)
 
                 net_loss += loss.item() * len(x)
                 n_total += len(x)
-                with torch.no_grad():
-                    _, preds = torch.max(out, dim=1)
-                    n_correct += (preds == y).float().sum().cpu()
 
                 if idx % report_period == 0:
-                    test_acc = n_correct / n_total
+                    test_loss = net_loss / n_total
                     curr_train = epoch * len(train_dl) + (epoch - 1) * len(test_dl) + idx
-                    report_statistics(start, curr_train, total_train, val=np.round(test_acc, 4))
+                    report_statistics(start, curr_train, total_train, val=np.round(test_loss, 4))
 
         test_loss = net_loss / n_total
-        test_acc = n_correct / n_total
 
         with open(train_log, "a") as file:
             file.write(str(train_loss) + "\n")
-        with open(train_acc_log, "a") as file:
-            file.write(str(train_acc) + "\n")
 
         with open(test_log, "a") as file:
             file.write(str(test_loss) + "\n")
-        with open(test_acc_log, "a") as file:
-            file.write(str(test_acc) + "\n")
 
         if params.tensorboard:
             writer.add_scalar("classifier_test_loss", test_loss, epoch + 1)
-            writer.add_scalar("classifier_test_acc", test_acc, epoch + 1)
             writer.add_scalar("classifier_train_loss", train_loss, epoch + 1)
-            writer.add_scalar("classifier_train_acc", train_acc, epoch + 1)
         schd.step()
     report_statistics(start, -1, total_train)
     if params.tensorboard:

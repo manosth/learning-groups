@@ -41,7 +41,7 @@ if __name__ == '__main__':
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     workers = max(4 * torch.cuda.device_count(), 4)
 
-    name = "results/rot_p/cifar10/comp_rot=90_med=6_glee_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_01_T142116"
+    name = "results/rot_p/cifar10/lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_17_T135647"
     names = gen_names(None, name)
 
     with open(names.folder_path + "params.pckl", "rb") as file:

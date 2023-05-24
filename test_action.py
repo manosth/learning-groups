@@ -44,31 +44,40 @@ if __name__ == '__main__':
     # name = "results/class/cifar10/svd_lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_16_T111412"
     # name = "results/class/mnist/lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_16_T233904"
     # name = "results/recon/cifar10/lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_17_T000621"
-    name = "results/recon/mnist/lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_17_T002628"
+    # name = "results/recon/mnist/lgn_groups=4_kernel=6_layers=4_lam=0_lr=0.01_2023_05_17_T002628"
+    name = "results/old/cifar10/cifarcolor_conv_final_suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T141247"
     names = gen_names(None, name)
 
     with open(names.folder_path + "params.pckl", "rb") as file:
         params = pickle.load(file)
 
     os.makedirs(names.figs_path, exist_ok=True)
-    os.makedirs(names.figs_path + "groups/", exist_ok=True)
+    os.makedirs(names.figs_path + "test_action/", exist_ok=True)
+
+    # # HACK
+    # name = "suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_12_T114529"
+    # folder_path = "results/cifarcolor_conv_" + name
+    # model_path = folder_path + "/" + name + ".pth"
+    # figs_path = folder_path + "/figs/"
+    # os.makedirs(figs_path, exist_ok=True)
+    # os.makedirs(figs_path + "test_action/", exist_ok=True)
 
     # model = LearnGroupAction_inv(params, device)
-    model = LearnGroupAction_recon_inv(params, device)
-    # model = LearnGroupAction(params, device)
-    model.load_state_dict(torch.load(names.model_path))
+    # model = LearnGroupAction_recon_inv(params, device)
+    model = LearnGroupAction(params, device)
+    # model.load_state_dict(torch.load(names.model_path))
+    model.load_state_dict(torch.load(name + "/final_suwl_groups=4_kernel=6_stride=1_layers=4_step=0.01_lam=0_lamloss=0_lr=0.01_2023_04_13_T141247.pth"))
     model = model.to(device)
 
+    input = torch.eye(params.kernel_size)
     model.eval()
     with torch.no_grad():
         for k in range(params.n_layers):
             A = model.A[k].clone().detach()
             for idx in range(params.n_groups):
-                print(torch.linalg.det(A[idx]))
-                print(torch.linalg.svdvals(A[idx]))
                 for channel in range(params.n_channels):
                     plt.figure()
-                    sns.heatmap(A[idx, channel, :, :].cpu().numpy(), cmap=cmap)#, vmin=-0.2, vmax=0.2)
+                    sns.heatmap((A[idx, channel, :, :].cpu() @ input.view(params.kernel_size * params.kernel_size, 1)).view(params.kernel_size, params.kernel_size).numpy(), cmap="gray")#, vmin=-0.2, vmax=0.2)
                     # print("layer=" + str(layer) + ", mean_abs_diag: ", torch.diagonal(d).abs().mean())
                     # print(torch.diagonal(d))
                     plt.axis("off")
@@ -76,5 +85,5 @@ if __name__ == '__main__':
                     ax.set_xticklabels([])
                     ax.set_yticklabels([])
                     ax.set_aspect("equal")
-                    plt.savefig(names.figs_path + "groups/GA_k=" + str(k) + "_group=" + str(idx) + "_channel=" + str(channel) + ".pdf", bbox_inches="tight")
+                    plt.savefig(names.figs_path + "test_action/GA_k=" + str(k) + "_group=" + str(idx) + "_channel=" + str(channel) + ".pdf", bbox_inches="tight")
                     plt.close()

@@ -127,7 +127,7 @@ def parse_args():
     parser.add_argument('--norm', type=str, default="whiten", choices=['whiten', 'standard', 'none'], help='data normalization')
 
     # architecture params
-    parser.add_argument('--model', type=str, default="glee", help='model name')
+    parser.add_argument('--model', type=str, default="lgn", help='model name')
     parser.add_argument('--n_groups', type=int, default=5, help='number of groups')
     parser.add_argument('--group_size', type=int, default=4, help='group size')
     parser.add_argument('--kernel_size', type=int, default=6, help='kernel size')
@@ -191,8 +191,10 @@ def gen_loaders(params, workers, patch=False):
 
 def gen_model(params, device, init_B=None):
     # for now, just hack it out
-    return LearnGroupAction_patch(params, device).to(device)
+    # return LearnGroupAction_patch(params, device).to(device)
     # return LearnGroupAction(params, device).to(device)
+    # return LearnGroupAction_inv(params, device).to(device)
+    return LearnGroupAction_recon_inv(params, device).to(device)
 
 def standardize(X, mean=None, std=None):
     "Expects data in NxCxWxH."
@@ -300,8 +302,25 @@ def load_cifar(params, datadir='~/data', three_class=False, color=False, patch=F
         X_te, _, _ = whiten(X_te, zca, mean)
 
     if patch:
-        angle = 90
+        angle = 60
         med_filt = MedianPool2d(6, same=True)
+        # kernel_size = 3
+        # stride = 1
+        # ih, iw = params.input_height, params.input_width
+        # if ih % 1 == 0:
+        #     ph = max(kernel_size - stride, 0)
+        # else:
+        #     ph = max(kernel_size - (ih % stride), 0)
+        # if iw % stride == 0:
+        #     pw = max(kernel_size - stride, 0)
+        # else:
+        #     pw = max(kernel_size - (iw % stride), 0)
+        # pl = pw // 2
+        # pr = pw - pl
+        # pt = ph // 2
+        # pb = ph - pt
+        # padding = (pl, pt)
+        # med_filt = nn.AvgPool2d(kernel_size, stride=stride, padding=padding)
         X_patch_tr = torch.zeros(X_tr.shape[0], X_tr.shape[1], params.kernel_size, params.kernel_size)
         Y_patch_tr = torch.zeros(X_tr.shape[0], X_tr.shape[1], params.kernel_size, params.kernel_size)
         for idx in range(X_tr.shape[0]):
@@ -370,5 +389,5 @@ class MedianPool2d(nn.Module):
         # would likely be more efficient to implement from scratch at C/Cuda level
         x = F.pad(x, self._padding(x), mode='reflect')
         x = x.unfold(2, self.k[0], self.stride[0]).unfold(3, self.k[1], self.stride[1])
-        x = x.contiguous().view(x.size()[:4] + (-1,)).median(dim=-1)[0]
+        x = x.contiguous().view(x.size()[:4] + (-1,)).mean(dim=-1)[0]
         return x
